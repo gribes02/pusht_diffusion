@@ -1,0 +1,4 @@
+# Implement the default configuration for the PUSHT model. 
+# This configuration will be used as a base for training and evaluation.
+# e.g. obs_dim, action_dim, obs_horizon, action_horizon, etc.
+# num_diffusion_steps, noise_schedule, etc.
