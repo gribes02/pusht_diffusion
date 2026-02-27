@@ -41,6 +41,8 @@ class DDPMScheduler():
         print(self.alphas_cumprod.size())
         beta = self.betas[timestep]
         alpha_hat_t = self.alphas_cumprod[timestep]
+        alpha_hat_t = alpha_hat_t[:, None, None]  
+        print("alpha_hat size: ", alpha_hat_t.size())
         prev_alpha_hat_t = self.alphas_cumprod[timestep - 1]
         clean_sample = (sample - (1-alpha_hat_t)**0.5 * model_output) / alpha_hat_t**0.5
 
