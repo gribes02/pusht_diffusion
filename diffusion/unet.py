@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from obs_encoder import ObsEncoder
 
 class SinusoidalEmbedding(nn.Module):
     def __init__(self, embed_dim):
@@ -105,7 +106,6 @@ class EncoderBlock(nn.Module):
     def __init__(self, c_in, c_out, cond_dim):
         super().__init__()
 
-
         self.res_block = ResidualConvBlock(c_in, c_out, cond_dim)
         self.downsample = nn.Conv1d(c_out, c_out, kernel_size=3, stride=2, padding=1)
 
@@ -117,26 +117,109 @@ class EncoderBlock(nn.Module):
         return downsample, feature_map
     
 class Bottleneck(nn.Module):
-    def __init__(self):
+    def __init__(self, c_in, cond_dim):
         super().__init__()
+
+        self.residual_block1 = ResidualConvBlock(c_in, c_in, cond_dim)
+        self.residual_block2 = ResidualConvBlock(c_in, c_in, cond_dim)
         
+    def forward(self, feature_map, cond_vect):
+        out1 = self.residual_block1(feature_map, cond_vect)
+        out2 = self.residual_block2(out1, cond_vect)
+
+        return out2
+
 
 class DecoderBlock(nn.Module):
-    def __init__(self):
+    def __init__(self, c_in, c_out, cond_dim):
         super().__init__()
 
+        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
+        self.residual_block1 = ResidualConvBlock(c_in, c_out, cond_dim)
+        self.residual_block2 = ResidualConvBlock(c_out, c_out, cond_dim)
+
+    def forward(self, skip_connection, feature_map, cond_vect):
+
+        out_upsample = self.upsample(feature_map)
+        out_connection = torch.cat((skip_connection, out_upsample), dim=1)
+        out_res1 = self.residual_block1(out_connection, cond_vect)
+        out_res2 = self.residual_block2(out_res1, cond_vect)
+
+        return out_res2
+    
+class ConditionalVector(nn.Module):
+    def __init__(self, embed_dim, obs_dim, obs_horizon, obs_embeded_dim):
+        super().__init__()
+
+        self.sin_embed = SinusoidalEmbedding(embed_dim) # [B, embed_dim]
+        self.obs_encoder = ObsEncoder(obs_dim, obs_horizon, obs_embeded_dim) # [B, obs_embed_dim]
+
+        self.mlp = nn.Sequential(nn.Linear(embed_dim, embed_dim * 2), 
+                                 nn.Mish(), 
+                                 nn.Linear(embed_dim * 2, embed_dim),
+                                 nn.Mish())
+
+        self.resize = nn.Linear(obs_embeded_dim, embed_dim) if obs_embeded_dim != embed_dim else nn.Identity()
+    
+    def forward(self, timesteps, obs): 
+        
+        sin_embed_out = self.sin_embed(timesteps)
+        sin_embed_out = self.mlp(sin_embed_out)
+        obs_encoder_out = self.obs_encoder(obs)
+
+        obs_encoder_out = self.resize(obs_encoder_out)
+        
+        return sin_embed_out + obs_encoder_out
 
 
+class UNet(nn.Module):
+    def __init__(self, embed_dim, obs_dim, obs_horizon, obs_embeded_dim, base_dim=256, action_dim=2):
+        super().__init__()
 
+        multipliers = [1, 2, 4]
 
+        cond_dim = embed_dim
 
+        self.resize = nn.Conv1d(action_dim, base_dim, kernel_size=1)
 
+        dims = [base_dim * m for m in multipliers] # [base_dim * 1, base_dim * 2, base_dim * 4]
 
+        self.encoders = nn.ModuleList(EncoderBlock(dims[i], dims[i + 1], cond_dim) for i in range(len(dims) - 1))
+        self.decoders = nn.ModuleList(DecoderBlock(dims[i + 1] * 2, dims[i], cond_dim) for i in reversed(range(len(dims) - 1)))
 
+        in_bottleneck = dims[-1]
+        self.bottleneck = Bottleneck(in_bottleneck, cond_dim)
 
+        self.cond_vect = ConditionalVector(cond_dim, obs_dim, obs_horizon, obs_embeded_dim)
 
+        self.output_proj = nn.Conv1d(base_dim, action_dim, kernel_size=1)
 
+        
 
+    def forward(self, noisy_action, timesteps, obs):
+
+        skip_connections = []
+
+        noisy_action = noisy_action.transpose(2, 1) # [B, action_dim, pred_horizon]
+
+        x = self.resize(noisy_action)
+
+        cond_vect = self.cond_vect(timesteps, obs)
+
+        for encoder in self.encoders:
+            x, skip_connection = encoder(x, cond_vect)
+            skip_connections.append(skip_connection)
+
+        x = self.bottleneck(x, cond_vect)
+
+        for decoder in self.decoders:
+            skip_connection = skip_connections.pop()
+            x = decoder(skip_connection, x, cond_vect)
+
+        out = self.output_proj(x)
+
+        return out.transpose(2,1)         
+        
 if __name__ == "__main__":
     
     c_in = 64
@@ -144,12 +227,22 @@ if __name__ == "__main__":
     cond_dim = 256
     B = 4
     T = 125
+    obs_dim = 12
+    obs_horizon = 3
+
+    pred_horizon = 12
+    action_dim = 2
 
     features = torch.randn(B, c_in, T)
     cond_vec = torch.randn(B, cond_dim)
 
-    resblock = ResidualConvBlock(c_in, c_out, cond_dim)
+    noisy_action = torch.randn((B, pred_horizon, action_dim))
+    timestep = torch.randn((B,))
+    obs = torch.randn((B, obs_horizon, obs_dim))
 
-    print(resblock(features, cond_vec).shape)
-    
+    u_net = UNet(cond_dim, obs_dim, obs_horizon, obs_embeded_dim=256)    
+
+    out = u_net(noisy_action, timestep, obs)
+    print(out)
+    print(out.shape) # (B, pred_horizon, action_dim)
 
