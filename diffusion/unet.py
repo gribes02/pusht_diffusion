@@ -10,7 +10,7 @@ class SinusoidalEmbedding(nn.Module):
         
 
     def forward(self,timesteps) -> torch.Tensor:
-        # Timesteps shape [B]
+        # Timesteps shape [B, 1]
 
         assert self.embed_dim % 2 == 0, \
         f"embed_dim must be even"

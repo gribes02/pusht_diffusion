@@ -37,7 +37,6 @@ class DDPMScheduler():
     def step(self, model_output, timestep, sample) -> torch.Tensor:
         # Implement the DDPM reverse step, returning x_{t-1}
         # Model output is the predicted noise eps_theta
-        print("timestep", timestep)
         print(self.alphas_cumprod.size())
         beta = self.betas[timestep]
         alpha_hat_t = self.alphas_cumprod[timestep]
