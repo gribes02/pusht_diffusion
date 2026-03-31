@@ -13,6 +13,7 @@ class DDPMScheduler():
         self.betas = torch.from_numpy(self.betas)
         self.alphas = 1 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        self.alphas_cumprod_prev = torch.cat([torch.tensor([1.0]), self.alphas_cumprod[:-1]])
 
 
     def _get_betas(self):
@@ -28,7 +29,7 @@ class DDPMScheduler():
     def add_noise(self, x0, noise, timesteps) -> torch.Tensor:
 
         alpha_hat = self.alphas_cumprod[timesteps]       # [B]
-        alpha_hat = alpha_hat.view(-1, 1)                # [B, 1] for broadcasting
+        alpha_hat = alpha_hat.view(-1, 1, 1)                # [B, 1, 1] for broadcasting
 
         xt = alpha_hat**0.5 * x0 + (1 - alpha_hat)**0.5 * noise
 
@@ -37,12 +38,10 @@ class DDPMScheduler():
     def step(self, model_output, timestep, sample) -> torch.Tensor:
         # Implement the DDPM reverse step, returning x_{t-1}
         # Model output is the predicted noise eps_theta
-        print(self.alphas_cumprod.size())
+        timestep = timestep.item() if isinstance(timestep, torch.Tensor) else timestep
         beta = self.betas[timestep]
         alpha_hat_t = self.alphas_cumprod[timestep]
-        alpha_hat_t = alpha_hat_t[:, None, None]  
-        print("alpha_hat size: ", alpha_hat_t.size())
-        prev_alpha_hat_t = self.alphas_cumprod[timestep - 1]
+        prev_alpha_hat_t = self.alphas_cumprod_prev[timestep]
         clean_sample = (sample - (1-alpha_hat_t)**0.5 * model_output) / alpha_hat_t**0.5
 
         if self.clip_sample:
