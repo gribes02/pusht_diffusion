@@ -3,11 +3,11 @@ import torch
 class Normalizer():
     
     def __init__(self):
-        self.action_mins = torch.tensor([0,0])
-        self.action_maxs = torch.tensor([512,512])
+        self.action_mins = torch.tensor([12, 25])
+        self.action_maxs = torch.tensor([511,511])
 
-        self.obs_mins = torch.tensor([0, 0, 0, 0, 0])
-        self.obs_maxs = torch.tensor([512, 512, 512, 512, 2 * 3.141592653589793])
+        self.obs_mins = torch.tensor([1.3456424e+01, 3.2938293e+01, 5.7471767e+01, 1.0827995e+02, 2.1559125e-04])
+        self.obs_maxs = torch.tensor([496.14618, 510.9579, 439.9153, 485.6641, 6.2830877])
 
     def normalize_actions(self, actions):
         # Normalize to [-1, 1]
