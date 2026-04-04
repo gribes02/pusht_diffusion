@@ -12,30 +12,33 @@ class TrajectoryDataset:
         self.pred_horizon = pred_horizon
         self.obs_horizon = obs_horizon
 
+        self.valid_indices = self.get_valid_indices()
+
         normalizer = Normalizer() 
 
         self.normalized_states = normalizer.normalize_obs(torch.from_numpy(self.states).float())
         self.normalized_actions = normalizer.normalize_actions(torch.from_numpy(self.actions).float())
 
     def __len__(self):
-        return len(self.normalized_states) - self.obs_horizon - self.pred_horizon + 1
+        return len(self.valid_indices)
     
-    def get_valid_start_indices(self):
+    def get_valid_indices(self):
         valid_indices = []
-        for episode_end in self.episode_ends:
-            start_idx = episode_end - self.obs_horizon - self.pred_horizon + 1
-            if start_idx >= 0:
-                valid_indices.append(start_idx)
+        for i, episode_end in enumerate(self.episode_ends):
+            episode_start = self.episode_ends[i - 1] if i > 0 else 0
+            t_start = episode_start + self.obs_horizon - 1
+            t_end = episode_end - self.pred_horizon
+            for t in range(t_start, t_end):
+                valid_indices.append(t)
         return valid_indices
     
     def __getitem__(self, idx):
-        valid_start_indices = self.get_valid_start_indices()
-        if idx >= len(valid_start_indices):
+        if idx >= len(self.valid_indices):
             raise IndexError("Index out of range for valid start indices.")
         
-        start_idx = valid_start_indices[idx]
-        obs = self.normalized_states[start_idx : start_idx + self.obs_horizon]
-        actions = self.normalized_actions[start_idx + self.obs_horizon : start_idx + self.obs_horizon + self.pred_horizon]
+        start_idx = self.valid_indices[idx]
+        obs = self.normalized_states[start_idx - self.obs_horizon + 1 : start_idx + 1]  # (obs_horizon, state_dim)
+        actions = self.normalized_actions[start_idx : start_idx + self.pred_horizon] # (pred_horizon, action_dim)
 
         return obs, actions
     
