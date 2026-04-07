@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from obs_encoder import ObsEncoder
+from .obs_encoder import ObsEncoder
 
 class SinusoidalEmbedding(nn.Module):
     def __init__(self, embed_dim):
@@ -141,6 +141,7 @@ class DecoderBlock(nn.Module):
     def forward(self, skip_connection, feature_map, cond_vect):
 
         out_upsample = self.upsample(feature_map)
+        out_upsample = out_upsample[:, :, :skip_connection.shape[2]]
         out_connection = torch.cat((skip_connection, out_upsample), dim=1)
         out_res1 = self.residual_block1(out_connection, cond_vect)
         out_res2 = self.residual_block2(out_res1, cond_vect)

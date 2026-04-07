@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from ..diffusion.noise_scheduler import DDPMScheduler
-from ..diffusion.diffusion_policy import DiffusionPolicy
+from diffusion.noise_scheduler import DDPMScheduler
+from diffusion.diffusion_policy import DiffusionPolicy
 
 class Trainer():
     def __init__(self, policy, train_data_loader, optimizer, ema, config):

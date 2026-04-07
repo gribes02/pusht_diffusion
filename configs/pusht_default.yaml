@@ -2,3 +2,15 @@
 # This configuration will be used as a base for training and evaluation.
 # e.g. obs_dim, action_dim, obs_horizon, action_horizon, etc.
 # num_diffusion_steps, noise_schedule, etc.
+
+pred_horizon: 10
+action_dim: 2
+embed_dim: 128
+obs_dim: 5
+obs_horizon: 10
+obs_embeded_dim: 128
+num_train_timesteps: 1000
+beta_schedule: "linear"
+beta_start: 0.0001
+beta_end: 0.02
+clip_sample: False

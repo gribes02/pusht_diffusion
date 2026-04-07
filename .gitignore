@@ -1,2 +1,6 @@
 .venv/
 pusht_data/
+diffusion/__pycache__/
+diffusion/data/__pycache__/
+training/__pycache__/
+utils/__pycache__/

@@ -1,7 +1,7 @@
 import zarr
 import torch
 import numpy as np
-from normalizer import Normalizer
+from .normalizer import Normalizer
 
 class TrajectoryDataset:
     def __init__(self, data_path='pusht_data/', pred_horizon=10, obs_horizon=10):
@@ -16,8 +16,8 @@ class TrajectoryDataset:
 
         normalizer = Normalizer() 
 
-        self.normalized_states = normalizer.normalize_obs(torch.from_numpy(self.states).float())
-        self.normalized_actions = normalizer.normalize_actions(torch.from_numpy(self.actions).float())
+        self.normalized_states = normalizer.normalize_obs(torch.from_numpy(np.array(self.states)).float())
+        self.normalized_actions = normalizer.normalize_actions(torch.from_numpy(np.array(self.actions)).float())
 
     def __len__(self):
         return len(self.valid_indices)

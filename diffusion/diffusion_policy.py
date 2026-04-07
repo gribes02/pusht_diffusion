@@ -1,9 +1,7 @@
 import torch 
 import torch.nn as nn
-from unet import UNet
-from noise_scheduler import DDPMScheduler
-from obs_encoder import ObsEncoder
-
+from .unet import UNet
+from .noise_scheduler import DDPMScheduler
 
 class DiffusionPolicy(nn.Module):
     def __init__(self, pred_horizon, action_dim, embed_dim, obs_dim, obs_horizon, obs_embeded_dim, num_train_timesteps=1000, beta_schedule="linear", beta_start=0.0001, beta_end=0.02, clip_sample=False):

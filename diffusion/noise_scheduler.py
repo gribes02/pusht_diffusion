@@ -4,16 +4,18 @@ import torch
 class DDPMScheduler():
     def __init__(self, num_train_timesteps=1000, beta_schedule="linear", beta_start=0.0001, beta_end=0.02, clip_sample=False,):
 
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
         self.num_train_timesteps = num_train_timesteps
         self.beta_schedule = beta_schedule
         self.beta_start = beta_start
         self.beta_end = beta_end
         self.clip_sample = clip_sample
         self.betas = self._get_betas()
-        self.betas = torch.from_numpy(self.betas)
+        self.betas = torch.from_numpy(self.betas).to(self.device)
         self.alphas = 1 - self.betas
-        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-        self.alphas_cumprod_prev = torch.cat([torch.tensor([1.0]), self.alphas_cumprod[:-1]])
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0).to(self.device)
+        self.alphas_cumprod_prev = torch.cat([torch.tensor([1.0]), self.alphas_cumprod[:-1]]).to(self.device)
 
 
     def _get_betas(self):
