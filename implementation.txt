@@ -1,0 +1,87 @@
+The problem FiLM solves:
+
+You have a feature map inside the U-Net, shape (batch, channels, horizon),
+and you have a conditioning vector (the combined obs + timestep embedding)
+shape (B, cond_dim). You need the conditioning to influence the feature map's computation.
+
+For a feature map with C channels, FiLM produces two vectors from the conditioning:
+a scale (gamma) and a shift (beta), each of length C (one scale and shift per channel)
+
+output[C] = gamma[C] * feature[C] + beta[C]
+
+gamma and beta are each (batch, C), and you broadcast to (batch, C, 1) (so you can x and +)
+
+Many implementations predict gamma as gamma = 1 + gamma_raw.
+
+
+Where in the residual block this plugs in
+
+Recall the block structure conv -> norm -> (FiLM) -> activation -> conv -> norm ->
+activation -> residual add.
+
+1. Conditioning vector arrives, shape (batch, cond_dim).
+2. Linear layer: cond_dim -> 2xC. Split into two halves: gamma_raw and beta
+3. Reshape gamma and beta from B,C to B,C,1
+4. Feature map goes through conv -> GroupNorm
+5. Apply feature = gamma * feature + beta, elementwise broadcasting.
+6. Apply activation (Mish/GELU)
+7. Continue to the second conv -> norm -> FiLM (using the same cond vector but a
+seperate Linear layer with its own weights) -> activation
+8. Add the block's original input (residual connection), with a channel matching 
+projection if input/output channels differ
+
+residual block = the container that uses FiLM. It owns the conv layers, the norm layers,
+the activation, the residual connection, and a Film module (or two) as sub-components
+
+U Net = the container that uses residual blocks, stacked in down/bottleneck/up stages,
+plus the down/upsampling ops between stages
+
+FILM Module 
+cond cond_dim
+num_channels
+
+The module stores one linear (cond_dim, 2*num_channels). Its forward pass tkes the
+conditioning vector, runs it through linear splits into gamma and b, reshapes 
+and returns them. 
+
+Residual block
+in channels, out channels for the two conv layers (first in->out, second out->out)
+cond_dim 
+Kernelsize (3 or 5)
+Number of groups for GroupNorm (must divide evenly into the channel out)
+if in_channel != out_channel you need an extra 1x1 conv layer to project to out
+before the residual out
+
+conv1, norm1, film1, norm2, film2, activation, optional skip-projection conv
+
+Downsampling 
+between stages in the encoder path you reduce the horizon length and increase channels. 
+The standard way is Conv1d with stride 2 so it's 1 or 2 residual blocks at the current
+res then a strided conv to halve the horizon length before the next stage. You stash
+the output before downsampling as the skip connection for the up sampling
+
+upsampling
+ConvTranspose1d with stride 2 learns how to expand the sequence length, directly analogous 
+to the strided conv.
+Interpolate the conv - use nn.functional.interpolate to just stretch the horizon length
+by 2x, then follow with a regular Conv1d (stride 1) to let the network smooth/mix the 
+upsampled result.
+
+Upsample first then concatenate the corresponding skip connection from the matching 
+down-stage along the channel dimension, then run through one or two residual blocks 
+at that resolution, 
+
+
+U-Net.__init__ needs: action_dim, cond_dim, base_channels, channel multipliers per stage, num down/up stages, kernel size, groups
+  ├─ down stages: [ResBlock(s), then strided-Conv1d to halve length]  → stash skip before halving
+  ├─ bottleneck: ResBlock(s) at lowest resolution, no resampling
+  ├─ up stages: [ConvTranspose1d to double length, concat skip, ResBlock(s)]
+  └─ final Conv1d: channels → action_dim
+      each ResBlock internally: conv1→norm1→FiLM1→act→conv2→norm2→FiLM2→act→(+residual, with projection if needed)
+      each FiLM internally: one Linear(cond_dim → 2*channels), split, reshape, apply
+
+Things I am unsure about:
+
+For the conv layers what should the padding be?
+Why use Mish instead of GELU, or is it the same?
+
