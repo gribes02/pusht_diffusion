@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn
 import math
 
-
 def sinusoidal_embedding(t, embed_dim=256, max_period=10000):
-    
+
     half_dim = embed_dim // 2
 
     # Frequencies 
@@ -19,7 +18,6 @@ def sinusoidal_embedding(t, embed_dim=256, max_period=10000):
 
     return emb
 
-
 # U-Net inputs (noisy action sequence (B, horizon, action_dim)
                 # These actions will have to have a channel dimension for 1D Conv
 # U-Net outputs (actions to send to the robot)  
@@ -27,12 +25,12 @@ class FiLM(nn.Module):
 
     def __init__(self, cond_dim, num_channels):
         super().__init__()
-        
+
         self.num_channels = num_channels
         self.linear = nn.Linear(cond_dim, 2*num_channels)
 
     def forward(self, cond_vect):
-        
+
         # cond_vect: (B, cond_dim)
         gammaBeta = self.linear(cond_vect) # (B, 2*num_channels)
 
@@ -42,7 +40,6 @@ class FiLM(nn.Module):
         gamma = 1 + gamma_raw
 
         return gamma, beta
-
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, cond_dim,
@@ -54,17 +51,17 @@ class ResidualBlock(nn.Module):
         self.out_channels = out_channels
 
         # L_out = (L_in + 2 x padding - kernel_size + 1 - 1) / 2 + 1 
-            
+
         self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size, padding=1)
         self.norm1 = nn.GroupNorm(num_groups, out_channels)
         self.film1 = FiLM(cond_dim, out_channels)
         self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size, padding=1)
         self.norm2 = nn.GroupNorm(num_groups, out_channels)
         self.film2 = FiLM(cond_dim, out_channels)
-        self.mish = nn.Mish()
+        self.mish1 = nn.Mish()
+        self.mish2 = nn.Mish()
         if in_channels != out_channels:
             self.projection = nn.Conv1d(in_channels, out_channels, kernel_size=1)
-            
 
     def forward(self, x, cond_vect):
         # x: (B, action_horizon, action_dim)
@@ -77,29 +74,26 @@ class ResidualBlock(nn.Module):
         gamma = gamma.unsqueeze(-1) 
         beta = beta.unsqueeze(-1) # (B, out_channels, 1)
         x = gamma * x + beta # (B, out_channels, action_horizon)
+        x = self.mish1(x)
 
         x = self.conv2(x)
         x = self.norm2(x)
         gamma, beta = self.film2(cond_vect)
         gamma, beta = gamma.unsqueeze(-1), beta.unsqueeze(-1)
         x = gamma * x + beta
-        x = self.mish(x)
+        x = self.mish2(x)
 
         if self.in_channels != self.out_channels:
             cache = self.projection(cache)
 
-        return x + cache # (B, out_channels, action_dim)
+        out = x + cache
 
+        return out.transpose(1,2) # (B, horizon, out_channels)
 
 class UNet(nn.Module):
 
-    def __init__(self, in_channels, out_channels, cond_dim, kernel_size=3, num_groups=2):
+    def __init__(self, action_dim, cond_dim, channel_list, kernel_size=3, num_groups=2):
         super().__init__()
-
-        
-
-        
-
 
 if __name__=="__main__":
 
@@ -114,12 +108,9 @@ if __name__=="__main__":
     actions = torch.randn(batch_size, action_horizon, action_dim)
 
     res_block = ResidualBlock(action_dim, out_channels, cond_dim)
-    
+
     out = res_block(actions, cond_vect)
     print(out.shape) # (batch_size, out_channels, action_horizon) 
-    
-
-
 
 
 
