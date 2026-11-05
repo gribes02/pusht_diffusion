@@ -95,6 +95,28 @@ class UNet(nn.Module):
     def __init__(self, action_dim, cond_dim, channel_list, kernel_size=3, num_groups=2):
         super().__init__()
 
+class DownStage(nn.Module):
+    def __init__(self, in_channels, out_channels, cond_dim) -> None:
+        super().__init__()
+        
+        self.res_blocks = nn.ModuleList([ResidualBlock(in_channels, out_channels, cond_dim),
+                                         ResidualBlock(out_channels, out_channels, cond_dim)])
+
+        self.downsample = nn.Conv1d(out_channels, out_channels, kernel_size=2, stride=2, padding=0)
+
+    def forward(self, x, cond_vect):
+        
+        for block in self.res_blocks:
+            x = block(x, cond_vect)
+            
+        skip = x 
+
+        out = self.downsample(x)
+
+        return out, skip
+
+        
+
 if __name__=="__main__":
 
     batch_size = 4
@@ -106,11 +128,16 @@ if __name__=="__main__":
 
     cond_vect = torch.randn(batch_size, cond_dim)
     actions = torch.randn(batch_size, action_horizon, action_dim)
-
+    
+    down_stage = DownStage(action_dim, out_channels, cond_dim)
     res_block = ResidualBlock(action_dim, out_channels, cond_dim)
+    
+    # actions (B, C, H)
+    # cond_vect (B, cond_dim)
+    out, skip = down_stage(actions, cond_vect)
+    print(out.shape) # (batch_size, out_channels, action_horizon / 2)
+    print(skip.shape) # (batch_size, out_channels, action_horizon)
 
-    out = res_block(actions, cond_vect)
-    print(out.shape) # (batch_size, out_channels, action_horizon) 
 
 
 
