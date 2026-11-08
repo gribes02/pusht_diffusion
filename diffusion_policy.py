@@ -64,8 +64,7 @@ class ResidualBlock(nn.Module):
             self.projection = nn.Conv1d(in_channels, out_channels, kernel_size=1)
 
     def forward(self, x, cond_vect):
-        # x: (B, action_horizon, action_dim)
-        x = x.transpose(1,2) # (B, action_dim, action_horizon)
+        # x: (B, action_dim, action_horizon)
         cache = x
 
         x = self.conv1(x) # (B, out_channels, action_horizon)
@@ -88,7 +87,7 @@ class ResidualBlock(nn.Module):
 
         out = x + cache
 
-        return out.transpose(1,2) # (B, horizon, out_channels)
+        return out # (B, out_channels, horizon)
 
 class UNet(nn.Module):
 
@@ -99,8 +98,8 @@ class DownStage(nn.Module):
     def __init__(self, in_channels, out_channels, cond_dim) -> None:
         super().__init__()
         
-        self.res_blocks = nn.ModuleList([ResidualBlock(in_channels, out_channels, cond_dim),
-                                         ResidualBlock(out_channels, out_channels, cond_dim)])
+        self.res_blocks = nn.ModuleList([ResidualBlock(in_channels, out_channels // 2, cond_dim),
+                                         ResidualBlock(out_channels // 2, out_channels, cond_dim)])
 
         self.downsample = nn.Conv1d(out_channels, out_channels, kernel_size=2, stride=2, padding=0)
 
@@ -108,6 +107,7 @@ class DownStage(nn.Module):
         
         for block in self.res_blocks:
             x = block(x, cond_vect)
+            print("1")
             
         skip = x 
 
@@ -115,6 +115,32 @@ class DownStage(nn.Module):
 
         return out, skip
 
+class UpStage(nn.Module):
+    def __init__(self, in_channels, out_channels, skip_channels, cond_dim) -> None:
+        super().__init__()
+
+        sum_channels = skip_channels + in_channels
+        
+        self.upsample = nn.ConvTranspose1d(in_channels, in_channels, kernel_size=3, stride=2, padding=1, output_padding=1)
+
+        self.blocks = nn.ModuleList([ResidualBlock(sum_channels, sum_channels // 2, cond_dim),
+                                     ResidualBlock(sum_channels // 2, out_channels, cond_dim)])
+
+    def forward(self, x, skip, cond_vect):
+        # x = (B, in_channels, horizon)
+        # skip = (B, skip_channels, horizon*2)
+
+        x = self.upsample(x)
+        print(x.shape, "After UpSample")
+
+        x = torch.cat((x, skip), dim=1)
+        print(x.shape, "After Concat")
+
+        for block in self.blocks:
+            x = block(x, cond_vect)
+
+        return x 
+        
         
 
 if __name__=="__main__":
@@ -131,14 +157,15 @@ if __name__=="__main__":
     
     down_stage = DownStage(action_dim, out_channels, cond_dim)
     res_block = ResidualBlock(action_dim, out_channels, cond_dim)
-    
+    up_stage = UpStage(16, 8, 8, cond_dim)   
     # actions (B, C, H)
     # cond_vect (B, cond_dim)
-    out, skip = down_stage(actions, cond_vect)
-    print(out.shape) # (batch_size, out_channels, action_horizon / 2)
-    print(skip.shape) # (batch_size, out_channels, action_horizon)
+    # out, skip = down_stage(actions, cond_vect)
+    x = torch.randn(batch_size, 16, 8)
+    skip = torch.randn(batch_size, 8, 16)
+    out = up_stage(x, skip, cond_vect)
 
-
+    print(out.shape)
 
 
 
