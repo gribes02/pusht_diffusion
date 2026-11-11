@@ -89,10 +89,6 @@ class ResidualBlock(nn.Module):
 
         return out # (B, out_channels, horizon)
 
-class UNet(nn.Module):
-
-    def __init__(self, action_dim, cond_dim, channel_list, kernel_size=3, num_groups=2):
-        super().__init__()
 
 class DownStage(nn.Module):
     def __init__(self, in_channels, out_channels, cond_dim) -> None:
@@ -107,7 +103,6 @@ class DownStage(nn.Module):
         
         for block in self.res_blocks:
             x = block(x, cond_vect)
-            print("1")
             
         skip = x 
 
@@ -131,46 +126,69 @@ class UpStage(nn.Module):
         # skip = (B, skip_channels, horizon*2)
 
         x = self.upsample(x)
-        print(x.shape, "After UpSample")
-
+ 
         x = torch.cat((x, skip), dim=1)
-        print(x.shape, "After Concat")
 
         for block in self.blocks:
             x = block(x, cond_vect)
 
         return x 
+
+class UNet(nn.Module):
+
+    def __init__(self, action_dim, cond_dim, channel_list, kernel_size=3, num_groups=2):
+        super().__init__()
+
+        self.down_stages = nn.ModuleList([DownStage(channel_list[0], channel_list[1], cond_dim),
+                                          DownStage(channel_list[1], channel_list[2], cond_dim)])
+
+        self.bottleneck = nn.ModuleList([ResidualBlock(channel_list[2], channel_list[2], cond_dim),
+                                         ResidualBlock(channel_list[2], channel_list[2], cond_dim)])
+
+        self.up_stages = nn.ModuleList([UpStage(channel_list[2], channel_list[1], channel_list[2], cond_dim),
+                                        UpStage(channel_list[1], channel_list[0], channel_list[1], cond_dim)])
+
+        self.projection = nn.Conv1d(channel_list[0], action_dim, kernel_size=1)
+
+    def forward(self, x, cond_vect):
+        # x: (B, C, H)
+
+        skips = []
+
+        for down in self.down_stages:
+            x, skip = down(x, cond_vect)
+            skips.append(skip)
+
+        for block in self.bottleneck:
+            x = block(x, cond_vect)
         
+        skips = skips[::-1]
+        for i, up_stage in enumerate(self.up_stages):
+            x = up_stage(x, skips[i], cond_vect)
+
+        out = self.projection(x)
+
+        return out
         
 
 if __name__=="__main__":
 
     batch_size = 4
-    action_dim = 2
-    cond_dim = 16
+    action_channel = 2
     action_horizon = 16
-    out_channels = 16
-    num_groups = 2
+    action_dim = 2
+    cond_dim = 256
+    channel_list = [2, 8, 32]
 
-    cond_vect = torch.randn(batch_size, cond_dim)
-    actions = torch.randn(batch_size, action_horizon, action_dim)
-    
-    down_stage = DownStage(action_dim, out_channels, cond_dim)
-    res_block = ResidualBlock(action_dim, out_channels, cond_dim)
-    up_stage = UpStage(16, 8, 8, cond_dim)   
-    # actions (B, C, H)
-    # cond_vect (B, cond_dim)
-    # out, skip = down_stage(actions, cond_vect)
-    x = torch.randn(batch_size, 16, 8)
-    skip = torch.randn(batch_size, 8, 16)
-    out = up_stage(x, skip, cond_vect)
+    cond_vect = torch.randn(batch_size, cond_dim) 
 
-    print(out.shape)
+    u_net = UNet(action_dim, cond_dim, channel_list)
 
+    noisy_actions = torch.randn(batch_size, action_dim, action_horizon)
 
+    clean_action = u_net(noisy_actions, cond_vect)
 
-
-
+    print(clean_action.shape)
 
 
 
